@@ -1,0 +1,7 @@
+{
+  "name": "你的专用形象顾问",
+  "description": "A highly realistic virtual try-on and hairstyle experience using AI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
