@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Upload, Camera, Image as ImageIcon, X, SwitchCamera, Circle } from 'lucide-react';
+import { Upload, Camera, Image as ImageIcon, X, SwitchCamera, AlertCircle } from 'lucide-react';
 import { Button } from './Button';
 
 interface ImageUploaderProps {
@@ -19,10 +19,18 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [cameraError, setCameraError] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
+      // Reset states
+      setIsCameraOpen(false);
+      setCameraError(false);
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
     }
   };
 
@@ -72,12 +80,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
 
   const clearImage = () => {
     setPreview(null);
+    setCameraError(false);
     if (inputRef.current) inputRef.current.value = '';
     if (nativeCameraRef.current) nativeCameraRef.current.value = '';
   };
 
   // --- Camera Logic ---
   const startCamera = async () => {
+    setCameraError(false);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -91,12 +101,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
       setIsCameraOpen(true);
     } catch (err) {
       console.error("Camera access denied:", err);
-      // Fallback to native camera input if getUserMedia fails
-      if (nativeCameraRef.current) {
-        nativeCameraRef.current.click();
-        return;
+      // Instead of auto-clicking (which is blocked in async context), show fallback UI
+      setCameraError(true);
+      // We still try to fallback if allowed, but usually this throws if user interaction is stale
+      try {
+         nativeCameraRef.current?.click();
+      } catch (e) {
+         // Ignore specific click error, UI will handle it
       }
-      alert("无法访问摄像头。请检查权限设置或使用'相册'上传。");
     }
   };
 
@@ -110,11 +122,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
 
   const switchCamera = () => {
     setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
-    // We need to restart the stream with new constraint
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
     }
-    // setTimeout to allow cleanup
     setTimeout(() => startCamera(), 100);
   };
 
@@ -126,7 +136,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Mirror if user facing
         if (facingMode === 'user') {
           ctx.translate(canvas.width, 0);
           ctx.scale(-1, 1);
@@ -146,7 +155,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
     }
   }, [isCameraOpen, stream]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (stream) {
@@ -161,7 +169,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
       
       {preview ? (
         <div className={`relative w-full ${aspectRatio} bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 group`}>
-          {/* Used object-contain to ensure full image is visible (adaptive) */}
           <img src={preview} alt="Preview" className="w-full h-full object-contain bg-black" />
           <button 
             onClick={clearImage}
@@ -174,43 +181,62 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
         <div 
           className={`relative w-full ${aspectRatio} rounded-2xl border-2 border-dashed transition-colors flex flex-col items-center justify-center p-6 cursor-pointer outline-none overflow-hidden
             ${isDragOver ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-white hover:border-brand-300 hover:bg-slate-50'}
+            ${cameraError ? 'border-red-300 bg-red-50' : ''}
           `}
           onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
-          tabIndex={0}
         >
-          <div className="bg-brand-50 p-4 rounded-full mb-3 text-brand-600">
-            <Upload size={24} />
-          </div>
-          <p className="text-sm font-semibold text-slate-900 text-center">点击、粘贴或拖拽上传</p>
-          <p className="text-xs text-slate-500 text-center mt-1">支持 JPG, PNG (Ctrl+V)</p>
+          {cameraError ? (
+            <div className="text-center animate-in fade-in">
+               <div className="bg-red-100 p-4 rounded-full mb-3 text-red-500 inline-flex">
+                  <AlertCircle size={24} />
+               </div>
+               <p className="text-sm font-bold text-slate-900">无法直接调用摄像头</p>
+               <p className="text-xs text-slate-500 mt-1 mb-4">可能是权限被拒绝或浏览器不支持</p>
+               <Button 
+                  variant="primary" 
+                  className="text-xs py-2 bg-red-500 hover:bg-red-600 border-none shadow-none"
+                  onClick={(e) => {
+                     e.stopPropagation();
+                     nativeCameraRef.current?.click();
+                  }}
+               >
+                  使用系统相机/相册
+               </Button>
+            </div>
+          ) : (
+            <>
+              <div className="bg-brand-50 p-4 rounded-full mb-3 text-brand-600">
+                <Upload size={24} />
+              </div>
+              <p className="text-sm font-semibold text-slate-900 text-center">点击、粘贴或拖拽上传</p>
+              <p className="text-xs text-slate-500 text-center mt-1">支持 JPG, PNG</p>
+            </>
+          )}
           
-          <div className="absolute bottom-4 flex gap-2 w-full px-4 pointer-events-none">
-            {/* Hidden actual inputs */}
-            <input 
+          {/* Hidden Inputs */}
+          <input 
               type="file" 
               ref={inputRef} 
               className="hidden" 
               accept="image/*"
               onChange={handleFileChange}
-            />
-             {/* Fallback native camera input */}
-            <input 
+          />
+          <input 
               type="file" 
               ref={nativeCameraRef} 
               className="hidden" 
               accept="image/*"
               capture="environment"
               onChange={handleFileChange}
-            />
-          </div>
+          />
         </div>
       )}
 
       {/* Buttons Row */}
-      {!preview && (
+      {!preview && !cameraError && (
          <div className="mt-3 flex gap-2">
             <Button 
               variant="outline" 
@@ -239,7 +265,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
 
       {/* Camera Overlay Modal */}
       {isCameraOpen && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in slide-in-from-bottom-10 duration-200">
            <div className="absolute top-4 right-4 z-20">
               <button onClick={stopCamera} className="text-white p-2 bg-white/10 rounded-full backdrop-blur">
                  <X size={24} />
@@ -247,7 +273,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
            </div>
            
            <div className="flex-1 relative flex items-center justify-center overflow-hidden bg-black">
-              {/* Use object-contain so the user sees the full field of view, essential for framing full body */}
               <video 
                 ref={videoRef} 
                 autoPlay 
@@ -269,7 +294,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ label, onImageSele
                     <div className="w-16 h-16 bg-white rounded-full"></div>
                  </button>
 
-                 {/* Spacer for centering */}
                  <div className="w-14"></div>
               </div>
            </div>

@@ -3,7 +3,7 @@ import { AppHeader } from './components/AppHeader';
 import { ImageUploader } from './components/ImageUploader';
 import { Button } from './components/Button';
 import { AppStep, EditMode, InputType, ProcessConfig, PresetItem } from './types';
-import { Shirt, Scissors, Wand2, RefreshCw, ArrowLeft, Download, Share2, AlertCircle, Sparkles, X, Loader2, PenLine, ZoomIn, User } from 'lucide-react';
+import { Shirt, Scissors, Wand2, RefreshCw, ArrowLeft, Download, Share2, AlertCircle, Sparkles, X, Loader2, PenLine, ZoomIn, User, Link as LinkIcon, ArrowUpRight } from 'lucide-react';
 import { CLOTHES_PRESETS, HAIR_PRESETS } from './constants';
 import { generateTryOnImage, analyzeImage } from './services/geminiService';
 
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [showShareGuide, setShowShareGuide] = useState(false);
 
   // Scroll to top on step change
   useEffect(() => {
@@ -104,35 +105,103 @@ const App: React.FC = () => {
     }
   };
 
-  // Share functionality
+  // Share functionality optimized for Mobile Webviews (WeChat/Douyin)
   const handleShare = async () => {
     if (!resultImage) return;
 
+    const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
+    if (isWeChat) {
+        setShowShareGuide(true);
+        return;
+    }
+
+    // 1. Try Web Share API (Works on standard mobile browsers like Safari/Chrome)
     try {
-      // Convert base64 to Blob
       const response = await fetch(resultImage);
       const blob = await response.blob();
-      const file = new File([blob], "mirror-ai-style.png", { type: "image/png" });
+      const file = new File([blob], `bian-bian-bian-${Date.now()}.png`, { type: "image/png" });
 
-      // Check if Web Share API is supported and can share files
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: 'MirrorAI 试衣间',
-          text: '看看我的AI新造型！',
+      const shareData = {
+          title: '变！变！变！ - 我的AI新造型',
+          text: '不敢相信这是AI生成的！快来试试这个虚拟形象顾问。',
           files: [file],
-        });
-      } else {
-        // Fallback: Download
-        const link = document.createElement('a');
-        link.href = resultImage;
-        link.download = `mirror-ai-${Date.now()}.png`;
-        link.click();
-        alert("已保存图片到相册，请打开微信/QQ分享给朋友");
+      };
+
+      if (navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+        return;
       }
     } catch (error) {
-      console.error('Share failed:', error);
-      // Simple fallback if sharing is cancelled or fails
+      console.log('Native share skipped:', error);
     }
+
+    // 2. Fallback for other In-App Browsers or Desktop
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+       // In restricted webviews, programmatic download often fails.
+       // We must instruct the user to use the native context menu.
+       alert("💡 保存/分享提示：\n\n请【长按上方图片】，选择“保存到手机”或“发送给朋友”即可！");
+    } else {
+       // Desktop: Direct download
+       try {
+         const link = document.createElement('a');
+         link.href = resultImage;
+         link.download = `bian-bian-bian-${Date.now()}.png`;
+         document.body.appendChild(link);
+         link.click();
+         document.body.removeChild(link);
+       } catch (e) {
+         alert("保存失败，请右键点击图片另存为。");
+       }
+    }
+  };
+
+  const copyLink = async () => {
+      const currentUrl = window.location.href;
+      
+      if (currentUrl.startsWith('blob:')) {
+        alert("⚠️ 提示：\n\n当前链接为预览链接（blob:），无法直接分享给他人。\n请部署应用或在正式浏览器中打开后再复制。");
+        return;
+      }
+
+      const marketingText = `变！变！变！ - 你的专属AI形象顾问 ✨\n一键试穿潮流新衣 👗，尝试百变发型 💇‍♀️！\n\n点击立即体验 👇\n${currentUrl}`;
+      
+      // Robust Copy Logic (same as Header)
+      let success = false;
+      
+      // 1. Try Modern API
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(marketingText);
+          success = true;
+        } catch (err) {
+           // continue to fallback
+        }
+      }
+      
+      // 2. Fallback
+      if (!success) {
+          try {
+              const textArea = document.createElement("textarea");
+              textArea.value = marketingText;
+              textArea.style.position = "fixed";
+              textArea.style.left = "-9999px";
+              document.body.appendChild(textArea);
+              textArea.focus();
+              textArea.select();
+              success = document.execCommand('copy');
+              document.body.removeChild(textArea);
+          } catch (e) {
+              success = false;
+          }
+      }
+
+      if (success) {
+          alert("软件链接已复制！\n快去粘贴分享给朋友吧~");
+      } else {
+          alert("复制失败，请手动复制浏览器地址栏。");
+      }
   };
 
   const resetApp = () => {
@@ -401,8 +470,6 @@ const App: React.FC = () => {
   const renderZoomModal = () => {
      if (!isZoomed || !resultImage || !userImage) return null;
 
-     // Dynamic style to focus on upper body for Hairstyle mode
-     // "object-cover object-top" ensures the head is at the top and fills the width/height gracefully.
      const imgStyle = editMode === EditMode.HAIR 
         ? "object-cover object-top" 
         : "object-contain";
@@ -477,19 +544,35 @@ const App: React.FC = () => {
         </div>
 
         {/* Result Image Card */}
-        <div className="bg-white p-4 rounded-[2rem] shadow-xl shadow-slate-200/60 border border-slate-100 mb-6">
-            <div className="relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-slate-100 group cursor-pointer" onClick={() => setIsZoomed(true)}>
-            {resultImage && (
-                <img 
-                    src={resultImage} 
-                    alt="Result" 
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
-            )}
-            
-            <div className="absolute bottom-4 right-4 bg-white/20 backdrop-blur-md border border-white/30 text-white text-xs font-medium px-4 py-2 rounded-full flex items-center gap-2 hover:bg-white/30 transition-all">
-                <ZoomIn size={14} /> 点击放大对比细节
-            </div>
+        <div className="bg-white p-4 rounded-[2rem] shadow-xl shadow-slate-200/60 border border-slate-100 mb-4">
+            <div className="relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-slate-100 group">
+                {/* Main Image - No Click Handler to allow Long Press */}
+                {resultImage && (
+                    <img 
+                        src={resultImage} 
+                        alt="Result" 
+                        className="w-full h-full object-cover"
+                    />
+                )}
+                
+                {/* Floating Actions */}
+                <div className="absolute top-3 right-3 flex flex-col gap-2">
+                   <button 
+                       onClick={() => setIsZoomed(true)}
+                       className="bg-black/40 text-white p-2.5 rounded-full backdrop-blur-md hover:bg-black/60 transition-all shadow-sm"
+                   >
+                       <ZoomIn size={18} />
+                   </button>
+                </div>
+
+                {/* Hint Overlay */}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-4 pt-10 pointer-events-none">
+                    <div className="flex justify-center">
+                        <span className="bg-black/50 backdrop-blur-md text-white/90 text-xs font-medium px-3 py-1.5 rounded-full flex items-center gap-1.5 animate-pulse border border-white/10">
+                            <Share2 size={12} /> 长按图片可保存或发送
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -528,26 +611,27 @@ const App: React.FC = () => {
         )}
 
         {/* Actions */}
-        <div className="flex gap-4 px-2">
+        <div className="flex gap-3 px-1 mt-6">
            <Button 
-              variant="secondary" 
-              fullWidth 
-              icon={<Share2 size={20} />}
-              className="h-14 rounded-2xl shadow-lg shadow-secondary-500/20"
-              onClick={handleShare}
-           >
-              发送给朋友 (分享)
-           </Button>
+              variant="outline" 
+              icon={<LinkIcon size={20} />}
+              className="h-14 w-14 rounded-2xl flex-none bg-white"
+              onClick={copyLink}
+           />
            <Button 
               variant="primary" 
               fullWidth 
-              icon={<RefreshCw size={20} />}
+              icon={<Share2 size={20} />}
               className="h-14 rounded-2xl shadow-lg shadow-brand-500/20"
-              onClick={() => setStep(AppStep.CONFIGURATION)}
+              onClick={handleShare}
            >
-              再试一次
+              分享给朋友 / 保存
            </Button>
         </div>
+        
+        <p className="text-center text-xs text-slate-400 mt-4 px-4 leading-relaxed">
+           如果微信/抖音无法直接下载，<br/>请长按上方大图手动保存。
+        </p>
       </div>
     );
   };
@@ -561,6 +645,23 @@ const App: React.FC = () => {
         {step === AppStep.PROCESSING && renderProcessingStep()}
         {step === AppStep.RESULT && renderResultStep()}
       </main>
+
+      {/* WeChat Share Guide Overlay */}
+      {showShareGuide && (
+        <div 
+            className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-end p-6 animate-in fade-in cursor-pointer" 
+            onClick={() => setShowShareGuide(false)}
+        >
+            <div className="text-white flex flex-col items-end animate-bounce mr-4 mt-2">
+                <ArrowUpRight size={60} className="text-white mb-2" />
+            </div>
+            <div className="text-white text-xl font-bold pr-4 text-right">
+                <p>点击右上角 <span className="text-3xl align-middle mx-1">···</span></p>
+                <p className="mt-3">选择 “发送给朋友”</p>
+                <p className="mt-2 text-slate-300 text-base font-normal">或分享到朋友圈，邀请好友来玩！</p>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

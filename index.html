@@ -2,8 +2,16 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MirrorAI - 虚拟试衣与发型体验</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>变！变！变！ - 虚拟试衣与发型体验</title>
+    
+    <!-- Social Media Meta Tags -->
+    <meta property="og:title" content="变！变！变！ - 你的专属AI形象顾问" />
+    <meta property="og:description" content="一键试穿潮流新衣，尝试百变发型。上传照片，立即遇见不一样的自己！" />
+    <meta property="og:image" content="https://image.pollinations.ai/prompt/fashion%20model%20banner%20vibrant%20colors?width=1200&height=630&nologo=true" />
+    <meta property="og:url" content="" />
+    <meta property="og:type" content="website" />
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -33,6 +41,19 @@
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
       body {
         font-family: 'Noto Sans SC', sans-serif;
+      }
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+      }
+      /* Safe area padding for iPhones */
+      .pb-safe {
+          padding-bottom: env(safe-area-inset-bottom);
       }
     </style>
   <script type="importmap">
